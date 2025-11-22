@@ -1,0 +1,132 @@
+// --- Air Defence Radar System with Missile Launch Integration ---
+// Components: HC-SR04, 2x Servo, LEDs, Buzzer, Blynk
+
+// --- Blynk Template Info ---
+#define BLYNK_TEMPLATE_ID "TMPL3H3WBOkgn"
+#define BLYNK_TEMPLATE_NAME "Air defence radar system "
+#define BLYNK_AUTH_TOKEN "S9PosdsO2tzeexvOIEmzMam66lm1x63S"
+
+// --- Libraries ---
+#include <ESP8266WiFi.h>
+#include <BlynkSimpleEsp8266.h>
+#include <Servo.h>
+
+// --- WiFi Credentials ---
+char auth[] = BLYNK_AUTH_TOKEN;
+char ssid[] = "Redmi 12 5G";
+char pass[] = "00000000";
+
+// --- Pin Configuration ---
+#define TRIG_PIN D5
+#define ECHO_PIN D6
+#define RADAR_SERVO_PIN D7
+#define MISSILE_SERVO_PIN D4
+#define RED_LED D1
+#define GREEN_LED D2
+#define BUZZER_PIN D3
+
+Servo radarServo;
+Servo missileServo;
+
+int pos = 0;
+int distance;
+bool missileLaunched = false;
+
+// --- Setup ---
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+
+  pinMode(RED_LED, OUTPUT);
+  pinMode(GREEN_LED, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+
+  digitalWrite(RED_LED, LOW);
+  digitalWrite(GREEN_LED, HIGH);
+  digitalWrite(BUZZER_PIN, LOW);
+
+  radarServo.attach(RADAR_SERVO_PIN);
+  missileServo.attach(MISSILE_SERVO_PIN);
+
+  missileServo.write(0); // Missile ready position
+
+  Blynk.begin(auth, ssid, pass);
+  Serial.println("🔗 Connecting to WiFi & Blynk...");
+}
+
+// --- Main Loop ---
+void loop() {
+  Blynk.run();
+
+  // Sweep radar left to right 0 to 180°
+  for (pos = 0; pos <= 180; pos += 3) {
+    radarServo.write(pos);
+    delay(25);
+    measureDistance();
+  }
+
+  // Sweep radar right to left 180 to 0°
+  for (pos = 180; pos >= 0; pos -= 3) {
+    radarServo.write(pos);
+    delay(25);
+    measureDistance();
+  }
+}
+
+// --- Measure Distance ---
+void measureDistance() {
+
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+
+  long duration = pulseIn(ECHO_PIN, HIGH);
+  distance = duration * 0.034 / 2; // in cm
+
+  Serial.print("Angle: ");
+  Serial.print(pos);
+  Serial.print("° | Distance: ");
+  Serial.print(distance);
+  Serial.println(" cm");
+
+  Blynk.virtualWrite(V1, pos);       // Radar angle
+  Blynk.virtualWrite(V0, distance);  // Live distance
+
+  // --- Security Alert ---
+  if (distance > 0 && distance <= 15) {
+
+    digitalWrite(RED_LED, HIGH);
+    digitalWrite(GREEN_LED, LOW);
+    digitalWrite(BUZZER_PIN, HIGH);
+
+    Blynk.virtualWrite(V2, 1);  // App alert ON
+
+    if (!missileLaunched) {
+      launchMissile();          // Fire only once
+      missileLaunched = true;
+    }
+
+  } else {
+    digitalWrite(RED_LED, LOW);
+    digitalWrite(GREEN_LED, HIGH);
+    digitalWrite(BUZZER_PIN, LOW);
+
+    Blynk.virtualWrite(V2, 0);
+    missileLaunched = false;  // Reset when safe
+  }
+}
+
+// --- Missile Launch Function ---
+void launchMissile() {
+  Serial.println("🚀 Target Detected! Launching Missile...");
+
+  missileServo.write(120);  // Fire
+  delay(150);
+  missileServo.write(0);   // Reset
+
+  Blynk.virtualWrite(V12, "🚀 Missile Launched!");
+}
